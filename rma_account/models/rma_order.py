@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 # © 2017 Eficent Business and IT Consulting Services S.L.
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl.html)
-from odoo import api, fields, models
+
+from odoo import api, fields, models, _
+from odoo.exceptions import ValidationError
 
 
 class RmaOrder(models.Model):
@@ -93,10 +95,12 @@ class RmaOrder(models.Model):
         result = action.read()[0]
         invoice_ids = self.mapped(
             'rma_line_ids.refund_line_ids.invoice_id').ids
+        if not invoice_ids:
+            raise ValidationError(_("No refunds found!"))
         # choose the view_mode accordingly
-        if len(invoice_ids) != 1:
+        if len(invoice_ids) > 1:
             result['domain'] = [('id', 'in', invoice_ids)]
-        elif len(invoice_ids) == 1:
+        else:
             res = self.env.ref('account.invoice_supplier_form', False)
             result['views'] = [(res and res.id or False, 'form')]
             result['res_id'] = invoice_ids[0]
@@ -106,18 +110,18 @@ class RmaOrder(models.Model):
     def action_view_invoice(self):
         if self.type == "supplier":
             action = self.env.ref('account.action_invoice_tree2')
+            res = self.env.ref('account.invoice_supplier_form', False)
         else:
             action = self.env.ref('account.action_invoice_tree')
+            res = self.env.ref('account.invoice_form', False)
         result = action.read()[0]
         invoice_ids = self.mapped('rma_line_ids.invoice_id').ids
+        if not invoice_ids:
+            raise ValidationError(_("No invoices found!"))
         # choose the view_mode accordingly
-        if len(invoice_ids) != 1:
+        if len(invoice_ids) > 1:
             result['domain'] = [('id', 'in', invoice_ids)]
-        elif len(invoice_ids) == 1:
-            if self.type == "supplier":
-                res = self.env.ref('account.invoice_supplier_form', False)
-            else:
-                res = self.env.ref('account.invoice_form', False)
+        else:
             result['views'] = [(res and res.id or False, 'form')]
             result['res_id'] = invoice_ids[0]
         return result
