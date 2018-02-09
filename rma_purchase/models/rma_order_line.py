@@ -4,7 +4,6 @@
 
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
-from odoo.addons import decimal_precision as dp
 
 
 class RmaOrderLine(models.Model):
