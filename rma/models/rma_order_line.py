@@ -46,16 +46,18 @@ class RmaOrderLine(models.Model):
     @api.multi
     def _compute_in_shipment_count(self):
         for line in self:
-            line.in_shipment_count = len(self.env['stock.picking'].search(
-                [('origin', '=', line.name),
-                 ('picking_type_code', '=', 'incoming')]).ids)
+            moves = self.env['stock.move'].search([
+                ('rma_line_id', '=', line.id)])
+            line.in_shipment_count = len(moves.mapped('picking_id').filtered(
+                lambda p: p.picking_type_code == 'incoming').ids)
 
     @api.multi
     def _compute_out_shipment_count(self):
         for line in self:
-            line.out_shipment_count = len(self.env['stock.picking'].search(
-                [('origin', '=', line.name),
-                 ('picking_type_code', '=', 'outgoing')]).ids)
+            moves = self.env['stock.move'].search([
+                ('rma_line_id', '=', line.id)])
+            line.out_shipment_count = len(moves.mapped('picking_id').filtered(
+                lambda p: p.picking_type_code == 'outgoing').ids)
 
     @api.multi
     def _get_rma_move_qty(self, states, direction='in'):
@@ -139,7 +141,7 @@ class RmaOrderLine(models.Model):
     def _compute_qty_supplier_rma(self):
         for rec in self:
             qty = rec._get_supplier_rma_qty()
-            rec.qty_to_supplier_rma = rec.qty_to_receive - qty
+            rec.qty_to_supplier_rma = rec.product_qty - qty
             rec.qty_in_supplier_rma = qty
 
     delivery_address_id = fields.Many2one(
@@ -489,8 +491,10 @@ class RmaOrderLine(models.Model):
             self.in_warehouse_id.lot_rma_id
         self.customer_to_supplier = self.operation_id.customer_to_supplier
         self.supplier_to_customer = self.operation_id.supplier_to_customer
-        self.in_route_id = self.operation_id.in_route_id
-        self.out_route_id = self.operation_id.out_route_id
+        if self.operation_id.in_route_id:
+            self.in_route_id = self.operation_id.in_route_id
+        if self.operation_id.out_route_id:
+            self.out_route_id = self.operation_id.out_route_id
         return result
 
     @api.onchange('customer_to_supplier', 'type')
@@ -511,34 +515,32 @@ class RmaOrderLine(models.Model):
     def action_view_in_shipments(self):
         action = self.env.ref('stock.action_picking_tree_all')
         result = action.read()[0]
-        picking_ids = self.env['stock.picking'].search(
-            [('origin', '=', self.name),
-             ('picking_type_code', '=', 'incoming')]).ids
-        if not picking_ids:
-            raise ValidationError(_("No shipments found!"))
+        moves = self.env['stock.move'].search([
+            ('rma_line_id', 'in', self.ids)])
+        picking_ids = moves.mapped('picking_id').filtered(
+            lambda p: p.picking_type_code == 'incoming').ids
         # choose the view_mode accordingly
         if len(picking_ids) > 1:
             result['domain'] = [('id', 'in', picking_ids)]
         else:
             res = self.env.ref('stock.view_picking_form', False)
             result['views'] = [(res and res.id or False, 'form')]
-            result['res_id'] = picking_ids[0]
+            result['res_id'] = picking_ids and picking_ids[0]
         return result
 
     @api.multi
     def action_view_out_shipments(self):
         action = self.env.ref('stock.action_picking_tree_all')
         result = action.read()[0]
-        picking_ids = self.env['stock.picking'].search(
-            [('origin', '=', self.name),
-             ('picking_type_code', '=', 'outgoing')]).ids
-        if not picking_ids:
-            raise ValidationError(_("No deliveries found!"))
+        moves = self.env['stock.move'].search([
+            ('rma_line_id', 'in', self.ids)])
+        picking_ids = moves.mapped('picking_id').filtered(
+            lambda p: p.picking_type_code == 'outgoing').ids
         # choose the view_mode accordingly
         if len(picking_ids) > 1:
             result['domain'] = [('id', 'in', picking_ids)]
         else:
             res = self.env.ref('stock.view_picking_form', False)
             result['views'] = [(res and res.id or False, 'form')]
-            result['res_id'] = picking_ids[0]
+            result['res_id'] = picking_ids and picking_ids[0]
         return result
