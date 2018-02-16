@@ -14,6 +14,6 @@
     'data': ['views/rma_order_view.xml',
              'views/rma_order_line_view.xml',
              'wizards/rma_add_purchase.xml'],
-    'installable': False,
+    'installable': True,
     'auto_install': True,
 }
