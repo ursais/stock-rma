@@ -15,11 +15,22 @@
                                string="Purchase Orders"/>
                 </button>
             </div>
+            <group name="main_info" position="inside">
+                <field name="purchase_order_line_id"
+                       options="{'no_create': True}"
+                       domain="['|',
+                                ('order_id.partner_id', '=', partner_id),
+                                ('order_id.partner_id', 'child_of', partner_id)]"/>
+            </group>
             <group name="quantities" position="inside">
                 <group>
                     <field name="qty_purchased"/>
                 </group>
             </group>
+            <field name="origin" position="after">
+                <field name="purchase_id"
+                       attrs="{'invisible': [('purchase_order_line_id', '=', False)]}"/>
+            </field>
             <notebook position="inside">
                 <page name="purchase" string="Purchase Lines">
                     <field name="purchase_order_line_ids" nolabel="1"/>

@@ -2,7 +2,8 @@
 # © 2017 Eficent Business and IT Consulting Services S.L.
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl.html)
 
-from openerp import api, fields, models
+from openerp import api, fields, models, _
+from openerp.exceptions import UserError
 from datetime import datetime
 
 
@@ -20,7 +21,7 @@ class RmaOrder(models.Model):
     def _compute_in_shipment_count(self):
         for rec in self:
             rec.in_shipment_count = len(rec.rma_line_ids.mapped(
-                'procurement_ids.move_ids').filtered(
+                'move_ids').filtered(
                 lambda m: m.location_dest_id.usage == 'internal').mapped(
                 'picking_id'))
 
@@ -28,7 +29,7 @@ class RmaOrder(models.Model):
     def _compute_out_shipment_count(self):
         for rec in self:
             rec.out_shipment_count = len(rec.rma_line_ids.mapped(
-                'procurement_ids.move_ids').filtered(
+                'move_ids').filtered(
                 lambda m: m.location_id.usage == 'internal').mapped(
                 'picking_id'))
 
@@ -47,30 +48,17 @@ class RmaOrder(models.Model):
         return datetime.now()
 
     name = fields.Char(
-        string='Order Number', index=True, readonly=True,
-        states={'progress': [('readonly', False)]}, copy=False)
+        string='Group Number', index=True, copy=False)
     type = fields.Selection(
         [('customer', 'Customer'), ('supplier', 'Supplier')],
         string="Type", required=True, default=_get_default_type, readonly=True)
     reference = fields.Char(string='Partner Reference',
                             help="The partner reference of this RMA order.")
-    comment = fields.Text('Additional Information', readonly=True, states={
-        'draft': [('readonly', False)]})
-
-    state = fields.Selection([('draft', 'Draft'), ('to_approve', 'To Approve'),
-                              ('approved', 'Approved'),
-                              ('done', 'Done')], string='State', index=True,
-                             default='draft')
+    comment = fields.Text('Additional Information')
     date_rma = fields.Datetime(string='Order Date', index=True,
                                default=_default_date_rma)
-    partner_id = fields.Many2one('res.partner', string='Partner',
-                                 required=True, readonly=True,
-                                 states={'draft': [('readonly', False)]})
-    assigned_to = fields.Many2one('res.users', 'Assigned to',
-                                  track_visibility='onchange')
-    requested_by = fields.Many2one('res.users', 'Requested by',
-                                   track_visibility='onchange',
-                                   default=lambda self: self.env.user)
+    partner_id = fields.Many2one(
+        comodel_name='res.partner', string='Partner', required=True)
     rma_line_ids = fields.One2many('rma.order.line', 'rma_id',
                                    string='RMA lines')
     in_shipment_count = fields.Integer(compute=_compute_in_shipment_count,
@@ -85,9 +73,20 @@ class RmaOrder(models.Model):
                                  required=True, default=lambda self:
                                  self.env.user.company_id)
 
+    @api.constrains("partner_id", "rma_line_ids")
+    def _check_partner_id(self):
+        if self.rma_line_ids and self.partner_id != self.mapped(
+                "rma_line_ids.partner_id"):
+            raise UserError(_(
+                "Group partner and RMA's partner must be the same."))
+        if len(self.mapped("rma_line_ids.partner_id")) > 1:
+            raise UserError(_(
+                "All grouped RMA's should have same partner."))
+
     @api.model
     def create(self, vals):
-        if self.env.context.get('supplier'):
+        if (self.env.context.get('supplier') or
+                vals.get('type') == 'supplier'):
             vals['name'] = self.env['ir.sequence'].next_by_code(
                 'rma.order.supplier')
         else:
@@ -100,17 +99,10 @@ class RmaOrder(models.Model):
         action = self.env.ref('stock.action_picking_tree_all')
         result = action.read()[0]
         picking_ids = []
-        suppliers = self.env.ref('stock.stock_location_suppliers')
-        customers = self.env.ref('stock.stock_location_customers')
         for line in self.rma_line_ids:
-            if line.type == 'customer':
-                for move in line.move_ids:
-                    if move.picking_id.location_id == customers:
-                        picking_ids.append(move.picking_id.id)
-            else:
-                for move in line.move_ids:
-                    if move.picking_id.location_id == suppliers:
-                        picking_ids.append(move.picking_id.id)
+            for move in line.move_ids:
+                if move.location_dest_id.usage == 'internal':
+                    picking_ids.append(move.picking_id.id)
         shipments = list(set(picking_ids))
         # choose the view_mode accordingly
         if len(shipments) != 1:
@@ -127,17 +119,10 @@ class RmaOrder(models.Model):
         action = self.env.ref('stock.action_picking_tree_all')
         result = action.read()[0]
         picking_ids = []
-        suppliers = self.env.ref('stock.stock_location_suppliers')
-        customers = self.env.ref('stock.stock_location_customers')
         for line in self.rma_line_ids:
-            if line.type == 'customer':
-                for move in line.move_ids:
-                    if move.picking_id.location_id != customers:
-                        picking_ids.append(move.picking_id.id)
-            else:
-                for move in line.move_ids:
-                    if move.picking_id.location_id != suppliers:
-                        picking_ids.append(move.picking_id.id)
+            for move in line.move_ids:
+                if move.location_dest_id.usage in ('supplier', 'customer'):
+                    picking_ids.append(move.picking_id.id)
         shipments = list(set(picking_ids))
         # choose the view_mode accordingly
         if len(shipments) != 1:
@@ -148,32 +133,6 @@ class RmaOrder(models.Model):
             result['views'] = [(res and res.id or False, 'form')]
             result['res_id'] = shipments[0]
         return result
-
-    @api.multi
-    def action_rma_to_approve(self):
-        self.write({'state': 'to_approve'})
-        for rec in self:
-            pols = rec.mapped('rma_line_ids.product_id.rma_approval_policy')
-            if not any(x != 'one_step' for x in pols):
-                rec.write({'assigned_to': self.env.uid})
-                rec.action_rma_approve()
-        return True
-
-    @api.multi
-    def action_rma_draft(self):
-        self.write({'state': 'draft'})
-        return True
-
-    @api.multi
-    def action_rma_approve(self):
-        # pass the supplier address in case this is a customer RMA
-        self.write({'state': 'approved'})
-        return True
-
-    @api.multi
-    def action_rma_done(self):
-        self.write({'state': 'done'})
-        return True
 
     @api.multi
     def _get_valid_lines(self):
@@ -198,7 +157,6 @@ class RmaOrder(models.Model):
                 res = self.env.ref('rma.view_rma_line_form', False)
             else:
                 res = self.env.ref('rma.view_rma_line_supplier_form', False)
-
             result['views'] = [(res and res.id or False, 'form')]
             result['res_id'] = lines.id
         return result
@@ -208,13 +166,14 @@ class RmaOrder(models.Model):
         action = self.env.ref('rma.action_rma_supplier_lines')
         result = action.read()[0]
         lines = self.rma_line_ids
-        related_lines = [line.id for line in lines.supplier_rma_line_ids]
-        # choose the view_mode accordingly
-        if len(related_lines) != 1:
-            result['domain'] = "[('id', 'in', " + \
-                               str(related_lines) + ")]"
-        elif len(related_lines) == 1:
-            res = self.env.ref('rma.view_rma_line_supplier_form', False)
-            result['views'] = [(res and res.id or False, 'form')]
-            result['res_id'] = related_lines[0]
+        for line_id in lines:
+            related_lines = [line.id for line in line_id.supplier_rma_line_ids]
+            # choose the view_mode accordingly
+            if len(related_lines) != 1:
+                result['domain'] = "[('id', 'in', " + \
+                                   str(related_lines) + ")]"
+            elif len(related_lines) == 1:
+                res = self.env.ref('rma.view_rma_line_supplier_form', False)
+                result['views'] = [(res and res.id or False, 'form')]
+                result['res_id'] = related_lines[0]
         return result
