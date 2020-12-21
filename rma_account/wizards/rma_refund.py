@@ -70,7 +70,10 @@ class RmaRefund(models.TransientModel):
         string="Reason", required=True, default=lambda self: self._get_reason()
     )
     item_ids = fields.One2many(
-        comodel_name="rma.refund.item", inverse_name="wiz_id", string="Items"
+        comodel_name="rma.refund.item",
+        inverse_name="wiz_id",
+        string="Items",
+        required=True,
     )
 
     def compute_refund(self):
@@ -92,7 +95,7 @@ class RmaRefund(models.TransientModel):
         new_invoice = self.compute_refund()
         action = (
             "action_move_out_refund_type"
-            if (new_invoice.type in ["out_refund", "out_invoice"])
+            if (new_invoice.move_type in ["out_refund", "out_invoice"])
             else "action_move_in_refund_type"
         )
         result = self.env.ref("account.%s" % action).read()[0]
@@ -135,10 +138,10 @@ class RmaRefund(models.TransientModel):
             )
         values = {
             "name": rma_line.rma_id.name or rma_line.name,
-            "invoice_payment_ref": rma_line.rma_id.name or rma_line.name,
+            "payment_reference": rma_line.rma_id.name or rma_line.name,
             "invoice_origin": rma_line.rma_id.name or rma_line.name,
             "ref": False,
-            "type": "in_refund" if rma_line.type == "supplier" else "out_refund",
+            "move_type": "in_refund" if rma_line.type == "supplier" else "out_refund",
             "journal_id": journal.id,
             "fiscal_position_id": rma_line.partner_id.property_account_position_id.id,
             "state": "draft",
@@ -163,9 +166,9 @@ class RmaRefund(models.TransientModel):
             if team_id:
                 values["team_id"] = team_id.id
         if rma_line.type == "customer":
-            values["type"] = "out_refund"
+            values["move_type"] = "out_refund"
         else:
-            values["type"] = "in_refund"
+            values["move_type"] = "in_refund"
         return values
 
     @api.constrains("item_ids")
@@ -187,20 +190,16 @@ class RmaRefundItem(models.TransientModel):
         "rma.order.line",
         string="RMA order Line",
         required=True,
-        readonly=True,
         ondelete="cascade",
     )
-    rma_id = fields.Many2one(
-        "rma.order", related="line_id.rma_id", string="RMA", readonly=True
-    )
+    rma_id = fields.Many2one("rma.order", related="line_id.rma_id", string="RMA")
     product_id = fields.Many2one("product.product", string="Product (Technical)")
-    product = fields.Many2one("product.product", string="Product", readonly=True)
+    product = fields.Many2one("product.product", string="Product", required=True)
     name = fields.Char(string="Description", required=True)
     product_qty = fields.Float(
         string="Quantity Ordered",
         copy=False,
         digits="Product Unit of Measure",
-        readonly=True,
     )
     invoice_address_id = fields.Many2one(
         comodel_name="res.partner", string="Invoice Address"
@@ -208,7 +207,7 @@ class RmaRefundItem(models.TransientModel):
     qty_to_refund = fields.Float(
         string="Quantity To Refund", digits="Product Unit of Measure"
     )
-    uom_id = fields.Many2one("uom.uom", string="Unit of Measure", readonly=True)
+    uom_id = fields.Many2one("uom.uom", string="Unit of Measure")
     refund_policy = fields.Selection(
         selection=[
             ("no", "Not required"),

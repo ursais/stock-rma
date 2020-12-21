@@ -55,11 +55,9 @@
                  <field
                     name="add_rma_line_id"
                     context="{'rma': True}"
-                    domain="[('type', '=', 'customer'),
-                                 ('partner_id', '=', partner_id)]"
+                    domain="[('partner_id', '=', partner_id)]"
                     attrs="{'readonly': [('state','not in',['draft'])],
-                         'invisible': ['|', ('state', '=', 'paid'),
-                          ('type', '=', 'in_invoice')]}"
+                         'invisible': ['|', ('state', '=', 'paid')]}"
                     class="oe_edit_only"
                     options="{'no_create': True}"
                 />
