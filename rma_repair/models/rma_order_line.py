@@ -85,7 +85,7 @@ class RmaOrderLine(models.Model):
 
     delivery_policy = fields.Selection(
         selection_add=[("repair", "Based on Repair Quantities")],
-        ondelete={'repair': lambda recs: recs.write({'delivery_policy': 'no'})}
+        ondelete={"repair": lambda recs: recs.write({"delivery_policy": "no"})},
     )
     qty_to_pay = fields.Float(compute="_compute_qty_to_pay")
     qty_to_deliver = fields.Float(compute="_compute_qty_to_deliver")
