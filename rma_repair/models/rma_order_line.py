@@ -101,13 +101,17 @@ class RmaOrderLine(models.Model):
         "repair_ids.invoice_status",
     )
     def _compute_qty_to_pay(self):
-        for rec in self.filtered(lambda l: l.delivery_policy == "repair"):
-            qty_to_pay = 0.0
-            for repair in rec.repair_ids.filtered(
-                lambda r: r.invoice_method != "none" and r.invoice_status != "posted"
-            ):
-                qty_to_pay += repair.product_qty
-            rec.qty_to_pay = qty_to_pay
+        for rec in self:
+            if rec.delivery_policy == "repair":
+                qty_to_pay = 0.0
+                for repair in rec.repair_ids.filtered(
+                    lambda r: r.invoice_method != "none"
+                    and r.invoice_status != "posted"
+                ):
+                    qty_to_pay += repair.product_qty
+                rec.qty_to_pay = qty_to_pay
+            else:
+                rec.qty_to_pay = 0.0
 
     def action_view_repair_order(self):
         action = self.env.ref("repair.action_repair_order_tree")
