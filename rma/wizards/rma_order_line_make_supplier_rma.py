@@ -158,7 +158,11 @@ class RmaLineMakeSupplierRma(models.TransientModel):
 
             rma_line_data = self._prepare_supplier_rma_line(rma, item)
             rma_line_obj.create(rma_line_data)
-        return self.item_ids.mapped("line_id").action_view_rma_lines()
+        action = self.env.ref("rma.action_rma_supplier_lines")
+        rma_lines = self.item_ids.mapped("line_id.supplier_rma_line_ids").ids
+        result = action.read()[0]
+        result["domain"] = [("id", "in", rma_lines)]
+        return result
 
 
 class RmaLineMakeRmaOrderItem(models.TransientModel):
