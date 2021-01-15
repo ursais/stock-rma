@@ -106,7 +106,7 @@ class RmaRefund(models.TransientModel):
 
     @api.model
     def prepare_refund_line(self, item):
-        accounts = item.product_id.product_tmpl_id._get_product_accounts()
+        accounts = item.product.product_tmpl_id._get_product_accounts()
         if item.line_id.type == "customer":
             account = accounts["stock_output"]
         else:
@@ -119,7 +119,7 @@ class RmaRefund(models.TransientModel):
             "account_id": account.id,
             "price_unit": item.line_id.price_unit,
             "product_uom_id": item.line_id.uom_id.id,
-            "product_id": item.product_id.id,
+            "product_id": item.product.id,
             "rma_line_id": item.line_id.id,
             "quantity": item.qty_to_refund,
         }
