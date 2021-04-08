@@ -108,7 +108,7 @@ class RmaRefund(models.TransientModel):
     def prepare_refund_line(self, item):
         accounts = item.product.product_tmpl_id._get_product_accounts()
         if item.line_id.type == "customer":
-            account = accounts["stock_output"]
+            account = accounts["income"]
         else:
             account = accounts["stock_input"]
         if not account:
