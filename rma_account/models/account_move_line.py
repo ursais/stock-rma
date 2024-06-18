@@ -21,7 +21,11 @@ class AccountMoveLine(models.Model):
                     [("display_type", "in", ("product", "line_section", "line_note"))],
                 ]
             )
-        lines = self.search([("move_id.name", operator, name)] + domain, limit=limit)
+        lines = self.search(
+            ["|", ("move_id.name", operator, name), ("move_id.ref", operator, name)]
+            + domain,
+            limit=limit,
+        )
         if limit:
             limit_rest = limit - len(lines)
         else:
