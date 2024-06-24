@@ -14,6 +14,7 @@ class AccountMoveLine(models.Model):
         as Odoo adds extra args to name_search on _name_search method that
         will make impossible to get the desired result."""
         domain = domain or []
+        query = None
         if self.env.context.get("rma"):
             domain = expression.AND(
                 [
@@ -21,7 +22,15 @@ class AccountMoveLine(models.Model):
                     [("display_type", "in", ("product", "line_section", "line_note"))],
                 ]
             )
-        lines = self.search([("move_id.name", operator, name)] + domain, limit=limit)
+        lines = self.search(
+            [
+                "|",
+                ("move_id.name", operator, name),
+                ("move_id.invoice_origin", operator, name),
+            ]
+            + domain,
+            limit=limit,
+        )
         if limit:
             limit_rest = limit - len(lines)
         else:
@@ -29,7 +38,8 @@ class AccountMoveLine(models.Model):
             limit_rest = limit
         if limit_rest or not limit:
             domain += [("id", "in", lines.ids)]
-            return super()._name_search(
+            query = self._search(domain, limit=limit_rest, order=order)
+            return query or super()._name_search(
                 name, domain=domain, operator=operator, limit=limit_rest, order=order
             )
         return self._search(domain, limit=limit, order=order)
