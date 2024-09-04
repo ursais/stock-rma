@@ -238,7 +238,10 @@ class RmaOrderLine(models.Model):
         for rec in self:
             if (
                 rec.account_move_line_id
-                and rec.account_move_line_id.move_id.partner_id != rec.partner_id
+                and (rec.account_move_line_id.move_id.partner_id != rec.partner_id and
+                     rec.account_move_line_id.move_id.partner_id not in rec.partner_id.child_ids and
+                     rec.account_move_line_id.partner_id != rec.partner_id
+                    )
             ):
                 raise ValidationError(
                     _(
